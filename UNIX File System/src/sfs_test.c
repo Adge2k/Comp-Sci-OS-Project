@@ -1,7 +1,7 @@
 /****************************************************
   This is a simple interactive test program for use
-  with the file system interface functions.
-  To use this program, compile it and link
+  with the file system interface functions.   
+  To use this program, compile it and link 
   it with your implementation of the
   file system functions, and with the blockio functions.
 
@@ -24,25 +24,45 @@
    templates for the sfs interface functions
 ******************************************************/
 
-int sfs_open(char* pathname);
+int
+sfs_open(char *pathname);
 
-int sfs_read(int fd, int start, int length, char* mem_pointer);
+int
+sfs_read(int fd,
+	 int start,
+	 int length,
+	 char *mem_pointer);
 
-int sfs_write(int fd, int start, int length, char* mem_pointer);
+int
+sfs_write(int fd,
+	  int start,
+	  int length,
+	  char *mem_pointer);
 
-int sfs_readdir(int fd, char* mem_pointer);
+int
+sfs_readdir(int fd,
+	    char *mem_pointer);
 
-int sfs_close(int fd);
+int
+sfs_close(int fd);
 
-int sfs_delete(char* pathname);
+int
+sfs_delete(char *pathname);
 
-int sfs_create(char* pathname, int type);
+int
+sfs_create(char *pathname,
+	   int type);
 
-int sfs_getsize(char* pathname);
+int
+sfs_getsize(char *pathname);
 
-int sfs_gettype(char* pathname);
+int
+sfs_gettype(char *pathname);
 
-int sfs_intitialize(int erase);
+int
+sfs_initialize(int erase);
+
+
 
 /*****************************************************
    Program constants
@@ -78,6 +98,8 @@ char io_buffer[MAX_IO_LENGTH+1];
 char data_buffer_1[MAX_INPUT_LENGTH];
 /* the following are used to hold integer input parameters */
 int p1,p2,p3;
+
+
 
 /*****************************************************
    main test routine
@@ -263,26 +285,108 @@ main()
       scanf("%d",&p1);
       retval = sfs_initialize(p1);
       if (retval > 0) {
-    	  printf("sfs_initialize succeeded.\n");
+	printf("sfs_initialize succeeded.\n");
       }
       else {
-    	  printf("Error.  Return value was %d\n",retval);
-	  }
-      	  break;
+	printf("Error.  Return value was %d\n",retval);
+      }
+      break;
     case 'q':
       /* Quit this program */
-    	return 0;
-    	break;
+      break;
     default:
-    	printf("Unknown command: %s\n",command_buffer);
-    	break;
+      printf("Unknown command: %s\n",command_buffer);
+      break;
     }
     if (command_buffer[0] == 'q') break;
     /* cleanup the newline that remains after reading command parameter(s) */
     gets(command_buffer);
   }
 }
+      
+int sfs_open(char *pathname){
+  int inumber = parsePathname(pathname);
+  get_block();
+  
+}
 
+int sfs_read(int fd, int start, int length, char *mem_pointer){
+  
+}
 
+int sfs_write(int fd, int start, int length, char *mem_pointer){
+  
+}
 
+int sfs_readdir(int fd, char *mem_pointer){
+  
+}
 
+int sfs_close(int fd){
+  
+}
+
+int sfs_delete(char *pathname){
+  int inumber = parsePathname(pathname);
+  if(inumber<0){
+    printf("File %s does not exist", pathanme);
+  }else{
+    
+  }
+}
+
+int sfs_create(char *pathname, int type){
+  int inumber = parsePathname(pathname);
+  if(inumber<0){
+    printf("File %s already exists\n", pathanme);
+  }else{
+    
+  }
+}
+
+int sfs_getsize(char *pathname){
+  int inumber = parsePathname(pathname);
+  printf("File Size of %s id %d\n", pathname, inode[inumber][2]);
+  
+}
+
+int sfs_gettype(char *pathname){
+  int inumber = parsePathname(pathname);
+  char* FileType;
+  if (inode[inumber][1]){
+    FileType = "File";
+  }else{
+    FileType = "Folder";
+  }
+  printf("File Type of %s id %s\n", pathname, FileType );
+}
+
+int sfs_initialize(int erase){
+  char buff[256];
+  short int inode_table[64][4];
+  int i;
+  if(erase){
+    
+  }
+  short int disk_bitmap[512];
+  for(i=0; i<8; i++){		//sets the first 2 blocks as full for storing the bitmap
+    disk_bitmap[0]=1;
+  }
+  for(i = 8; i<512; i++){
+    disk_bitmap[i]=0;
+  }
+  for(i=0;i<256;i++){
+    buff[i] = disk_bitmap[i];
+  }
+  put_block(0, buff);
+  for(i=256;i<512;i++){
+    buff[i-256] = disk_bitmap[i];
+  }
+  put_block(1, buff);
+  for(i = 0; i<64; i++){
+    inode_table[i][0]=i;
+  }
+  inode_table[0][1] = 0;	//file type is folder
+  inode_table[0][2] = 0;	//size of folder is zero - more if contains files
+  inode_table[0][3] = 11;	//block number where file is located
+}
