@@ -62,6 +62,12 @@ sfs_gettype(char *pathname);
 int
 sfs_initialize(int erase);
 
+int
+loadDirectory();
+
+int 
+getNextEmptyBlk();
+
 
 
 /*****************************************************
@@ -99,7 +105,16 @@ char data_buffer_1[MAX_INPUT_LENGTH];
 /* the following are used to hold integer input parameters */
 int p1,p2,p3;
 
+short int super_blk_buffer[128];
 
+struct FileNamePair{
+  char* Filename;
+  int inumber;
+  struct FilenamePair* next;
+  struct FilenamePair* child;
+  
+};
+typedef struct FilenamePair dEntry;
 
 /*****************************************************
    main test routine
@@ -194,17 +209,19 @@ main()
       /* Read from a directory */
       printf("Enter file descriptor number: ");
       scanf("%d",&p1);
-      retval = sfs_readdir(p1,io_buffer);
-      if (retval > 0) {
-	printf("sfs_readdir succeeded.\n");
-	printf("Directory entry is: %s\n",io_buffer);
-      }
-      else if (retval == 0) {
-	printf("sfs_readdir succeeded.\n");
-	printf("No more entries in this directory\n");
-      }
-      else {
-	printf("Error.  Return value was %d\n",retval);
+      while(retval>0|retval==NULL){	//added for loop
+	retval = sfs_readdir(p1,io_buffer);
+	if (retval > 0) {
+	  printf("sfs_readdir succeeded.\n");
+	  printf("Directory entry is: %s\n",io_buffer);
+	}
+	else if (retval == 0) {
+	  printf("sfs_readdir succeeded.\n");
+	  printf("No more entries in this directory\n");
+	}
+	else {
+	  printf("Error.  Return value was %d\n",retval);
+	}
       }
       break;
     case 'c':
@@ -306,7 +323,7 @@ main()
       
 int sfs_open(char *pathname){
   int inumber = parsePathname(pathname);
-  get_block();
+  get_block(inode[0][3], io_buffer);
   
 }
 
@@ -319,6 +336,8 @@ int sfs_write(int fd, int start, int length, char *mem_pointer){
 }
 
 int sfs_readdir(int fd, char *mem_pointer){
+  int blocknum = inode[fd][3];
+  get_block(blocknum, mempointer);
   
 }
 
@@ -336,18 +355,24 @@ int sfs_delete(char *pathname){
 }
 
 int sfs_create(char *pathname, int type){
-  int inumber = parsePathname(pathname);
-  if(inumber<0){
+  int inumber = parsePathnameAvail(pathname);
+  if(inumber==-1){
     printf("File %s already exists\n", pathanme);
+  }else if(inumber == -2){
+    printf("Pathname %s is invalid\n", pathanme); 
   }else{
+    int blocknum = getNextEmptyBlk();
+    inode[inumber][1] = type;
+    inode[inumber][2] = 0;
+    inode[inumber][3] = blocknum;
     
   }
 }
 
 int sfs_getsize(char *pathname){
   int inumber = parsePathname(pathname);
-  printf("File Size of %s id %d\n", pathname, inode[inumber][2]);
-  
+  //printf("File Size of %s id %d\n", pathname, inode[inumber][2]);
+  return inode[inumber][2];
 }
 
 int sfs_gettype(char *pathname){
@@ -364,29 +389,98 @@ int sfs_gettype(char *pathname){
 int sfs_initialize(int erase){
   char buff[256];
   short int inode_table[64][4];
+  int j;
   int i;
   if(erase){
     
+  }else{
+    short int disk_bitmap[512];
+    for(i=0; i<8; i++){		//sets the first 2 blocks as full for storing the bitmap
+      disk_bitmap[0]=1;
+    }
+    for(i = 8; i<512; i++){
+      disk_bitmap[i]=0;
+    }
+    for(i=0;i<256;i++){
+      buff[i] = disk_bitmap[i];
+    }
+    put_block(0, buff);
+    for(i=256;i<512;i++){
+      buff[i-256] = disk_bitmap[i];
+    }
+    put_block(1, buff);
+    for(i = 0; i<64; i++){
+      inode_table[i][0]=i;
+    }
+    inode_table[0][1] = 0;	//file type is folder
+    inode_table[0][2] = 0;	//size of folder is zero - more if contains files
+    inode_table[0][3] = 11;	//block number where file is located
   }
-  short int disk_bitmap[512];
-  for(i=0; i<8; i++){		//sets the first 2 blocks as full for storing the bitmap
-    disk_bitmap[0]=1;
+  get_block(0, io_buffer);
+  for(i=0;i<64;i++){
+    int tmp=0;
+    for(j=1;j<5;j++){
+      if(j%4 == 1){
+	if(io_buffer[i*4+j]==1)
+	  temp+=8;
+      }else if(j%4 == 2){
+	  if(io_buffer[i*4+j-1]==1)
+	  temp+=4;
+      }else if(j%4 == 3){
+	  if(io_buffer[i*4+j-1]==1)
+	  temp+=2;
+      }else if(j%4 == 0){
+	  if(io_buffer[i*4+j-1]==1)
+	  temp+=1;
+      }
+    }
+      super_blk_buffer[i]=temp;
+    }
+    get_block(1, io_buffer);
+  for(i=0;i<64;i++){
+    int tmp=0;
+    for(j=1;j<5;j++){
+      if(j%4 == 1){
+	if(io_buffer[i*4+j]==1)
+	  temp+=8;
+      }else if(j%4 == 2){
+	  if(io_buffer[i*4+j-1]==1)
+	  temp+=4;
+      }else if(j%4 == 3){
+	  if(io_buffer[i*4+j-1]==1)
+	  temp+=2;
+      }else if(j%4 == 0){
+	  if(io_buffer[i*4+j-1]==1)
+	  temp+=1;
+      }
+    }
+      super_blk_buffer[i*2]=temp;
+    }
+    loadDirectory();
   }
-  for(i = 8; i<512; i++){
-    disk_bitmap[i]=0;
-  }
-  for(i=0;i<256;i++){
-    buff[i] = disk_bitmap[i];
-  }
-  put_block(0, buff);
-  for(i=256;i<512;i++){
-    buff[i-256] = disk_bitmap[i];
-  }
-  put_block(1, buff);
-  for(i = 0; i<64; i++){
-    inode_table[i][0]=i;
-  }
-  inode_table[0][1] = 0;	//file type is folder
-  inode_table[0][2] = 0;	//size of folder is zero - more if contains files
-  inode_table[0][3] = 11;	//block number where file is located
+void loadDirectory(){
+    
+}
+int getNextEmptyBlk(){
+    int i = 11;
+    int freeblknum;
+    while(superblockbuffer[i]==15){
+      i++;
+    }
+    int freeblksum = spuer_blk_buffer[i];
+    if(freeblksum >= 8){
+      if(freeblksum >= 12){
+	if(freeblksum >= 14){
+	  freeblknum = 4;
+	}else{
+	  freeblknum = 3;
+	}
+      }else{
+	freeblknum = 2;
+      }
+    }else{
+      freeblknum = 1;
+    }
+    return(i*4+freeblknum);
+	  
 }
