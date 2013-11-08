@@ -63,10 +63,13 @@ int
 sfs_initialize(int erase);
 
 int
-loadDirectory();
+initializeDirectory();
 
 int 
 getNextEmptyBlk();
+
+int
+parsPathname(char* pathname, int parentINumber, int dNum);
 
 
 
@@ -106,6 +109,10 @@ char data_buffer_1[MAX_INPUT_LENGTH];
 int p1,p2,p3;
 
 short int super_blk_buffer[128];
+
+char* directoryStructure[64][4];
+
+short int OpenFileTable[64];
 
 struct FileNamePair{
   char* Filename;
@@ -323,7 +330,13 @@ main()
       
 int sfs_open(char *pathname){
   int inumber = parsePathname(pathname);
-  get_block(inode[0][3], io_buffer);
+  if (inumber<0){
+    
+  }else{
+    OpenFileTable[inumber]+=1;
+    get_block(inode[0][3], io_buffer);
+    
+  }
   
 }
 
@@ -342,30 +355,70 @@ int sfs_readdir(int fd, char *mem_pointer){
 }
 
 int sfs_close(int fd){
-  
+  if(OpenFileTable[fd]>0){
+    OpenFileTable[fd]-=1;
+  }
 }
 
 int sfs_delete(char *pathname){
-  int inumber = parsePathname(pathname);
+  int dNum;
+  int parentInumber;
+  int inumber = parsePathname(pathname, &parentINumber, &dNum);
   if(inumber<0){
-    printf("File %s does not exist", pathanme);
+    return -1;
+    //printf("File %s does not exist", pathanme);
   }else{
-    
+    if(OpenfileTable[inumber]!=0)
+      return -1;
+    directoryStructure[dNum][0]=NULL;
+    directoryStructure[dNum][1]=NULL;
+    int tmp = directoryStructure[parentINumber][2];
+    if(directoryStructure[parentInumber][2]==dNum){
+      directoryStructure[parentInumber][2]=directoryStructure[dNum][3];
+    }else{
+      while(directoryStructure[tmp][3]!=dNum){
+	      temp = directoryStructure[tmp][3];      
+	  }
+      directoryStructure[tmp][3]=directoryStructure[dNum][3];
+    }
+    for(i=0;i<3; i++){
+      inode[inumber][i]=NULL;
+    }
+    /* Place way to fill block with zeros here */
+     
+    inode[inumber][3]=NULL;
   }
 }
 
 int sfs_create(char *pathname, int type){
-  int inumber = parsePathnameAvail(pathname);
+  char* filename;
+  int parentINumber;
+  int inumber = parsePathnameAvail(pathname, &filename, &parentINumber);
   if(inumber==-1){
     printf("File %s already exists\n", pathanme);
   }else if(inumber == -2){
     printf("Pathname %s is invalid\n", pathanme); 
   }else{
+    int i;
     int blocknum = getNextEmptyBlk();
     inode[inumber][1] = type;
     inode[inumber][2] = 0;
     inode[inumber][3] = blocknum;
-    
+    for(i=1; i<64; i++){
+      if(directoryStructure[i][0]==NULL){
+	directoryStructure[i][0]=filename;
+	directoryStructure[i][1]=inumber;
+	if(directoryStructure[parentInumber][2]==NULL){
+	  directoryStructure[parentInumber][2]=i;		//sets the file to be associated with the parent if it is first child
+	}else{
+	  int tmp = directoryStructure[parentInumber][2];	//gets the current child directory of the parent directory
+	  while(directoryStructure[tmp][3]!=NULL){
+	      temp = directoryStructure[tmp][2];      
+	  }
+	  directoryStructure[tmp][3]=i;			//assigns the current file as the next file in the list
+	}
+      }
+    }
   }
 }
 
@@ -377,13 +430,8 @@ int sfs_getsize(char *pathname){
 
 int sfs_gettype(char *pathname){
   int inumber = parsePathname(pathname);
-  char* FileType;
-  if (inode[inumber][1]){
-    FileType = "File";
-  }else{
-    FileType = "Folder";
-  }
-  printf("File Type of %s id %s\n", pathname, FileType );
+  return inode[inumber][1];
+  
 }
 
 int sfs_initialize(int erase){
@@ -412,7 +460,7 @@ int sfs_initialize(int erase){
     for(i = 0; i<64; i++){
       inode_table[i][0]=i;
     }
-    inode_table[0][1] = 0;	//file type is folder
+    inode_table[0][1] = 1;	//file type is folder
     inode_table[0][2] = 0;	//size of folder is zero - more if contains files
     inode_table[0][3] = 11;	//block number where file is located
   }
@@ -455,11 +503,16 @@ int sfs_initialize(int erase){
       }
     }
       super_blk_buffer[i*2]=temp;
-    }
-    loadDirectory();
   }
-void loadDirectory(){
-    
+  initializeDirectory();
+  for(i=0;i<64; i++){
+    OpenFileTable[i]=0;
+  }
+}
+
+void initializeDirectory(){
+    directoryStructure[0][0]="root";
+    directoryStructure[0][1]= 0;
 }
 int getNextEmptyBlk(){
     int i = 11;
