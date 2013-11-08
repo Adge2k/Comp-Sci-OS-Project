@@ -62,7 +62,7 @@ sfs_gettype(char *pathname);
 int
 sfs_initialize(int erase);
 
-int
+void
 initializeDirectory();
 
 int 
@@ -113,6 +113,10 @@ short int super_blk_buffer[128];
 char* directoryStructure[64][4];
 
 short int OpenFileTable[64];
+
+short int inode[64][4];
+
+char* garbage;
 
 struct FileNamePair{
   char* Filename;
@@ -331,17 +335,28 @@ main()
 int sfs_open(char *pathname){
   int inumber = parsePathname(pathname);
   if (inumber<0){
-    
-  }else{
-    OpenFileTable[inumber]+=1;
-    get_block(inode[0][3], io_buffer);
-    
+    return -1;
   }
-  
+  OpenFileTable[inumber]+=1;
+  get_block(inode[0][3], io_buffer);
+  return 1;
 }
 
 int sfs_read(int fd, int start, int length, char *mem_pointer){
-  
+  int i;
+  int tmp=start;
+  char tmp_buffer[MAX_IO_LENGTH+1];
+  char tmp_buffer2[length+1];
+  if(inode[fd][3]!=NULL){
+    get_block(inode[fd][3], tmp_buffer);
+    for(i=0; i<length; i++){
+      tmp_buffer2[i] = tmp_buffer[tmp];
+      tmp++;
+    }
+    mem_pointer = tmp_buffer2;
+    return 1;
+  }
+  return -1;
 }
 
 int sfs_write(int fd, int start, int length, char *mem_pointer){
@@ -349,9 +364,40 @@ int sfs_write(int fd, int start, int length, char *mem_pointer){
 }
 
 int sfs_readdir(int fd, char *mem_pointer){
-  int blocknum = inode[fd][3];
-  get_block(blocknum, mempointer);
-  
+  int i=0;
+  int j;
+  int tmp;
+  static int t=1;
+  static int flag = 0;
+  if(inode[fd][1]!=NULL){
+    while(directoryStructure[i][1]!=fd){
+      i++;
+    }
+    if(directoryStructure[i][2]!=NULL){
+      if(flag==0){
+	mem_pointer = directoryStructure[i][0];
+	flag =1;
+	return 1;
+      }else if(flag==1){
+	
+	if(directoryStructure[i][3]!=NULL){
+	  tmp=directoryStructure[i][3];
+	  for(j=0;j<t;j++){
+	    tmp=directoryStructure[tmp][3];
+	  }
+	  mem_pointer = directoryStructure[tmp][0];
+	  t++;
+	  return 1;
+	}else{
+	  t=1;
+	  flag = 0;
+	  return 0;
+	}
+	  
+      }
+    }
+  }
+  return -1;
 }
 
 int sfs_close(int fd){
@@ -361,30 +407,31 @@ int sfs_close(int fd){
 }
 
 int sfs_delete(char *pathname){
+  int i;
   int dNum;
-  int parentInumber;
+  int parentINumber;
   int inumber = parsePathname(pathname, &parentINumber, &dNum);
   if(inumber<0){
     return -1;
     //printf("File %s does not exist", pathanme);
   }else{
-    if(OpenfileTable[inumber]!=0)
+    if(OpenFileTable[inumber]!=0)
       return -1;
     directoryStructure[dNum][0]=NULL;
     directoryStructure[dNum][1]=NULL;
     int tmp = directoryStructure[parentINumber][2];
-    if(directoryStructure[parentInumber][2]==dNum){
-      directoryStructure[parentInumber][2]=directoryStructure[dNum][3];
+    if(directoryStructure[parentINumber][2]==dNum){
+      directoryStructure[parentINumber][2]=directoryStructure[dNum][3];
     }else{
       while(directoryStructure[tmp][3]!=dNum){
-	      temp = directoryStructure[tmp][3];      
+	      tmp = directoryStructure[tmp][3];      
 	  }
       directoryStructure[tmp][3]=directoryStructure[dNum][3];
     }
     for(i=0;i<3; i++){
       inode[inumber][i]=NULL;
     }
-    /* Place way to fill block with zeros here */
+    put_block(inode[inumber][3], garbage);	//emptys the block
      
     inode[inumber][3]=NULL;
   }
@@ -395,11 +442,12 @@ int sfs_create(char *pathname, int type){
   int parentINumber;
   int inumber = parsePathnameAvail(pathname, &filename, &parentINumber);
   if(inumber==-1){
-    printf("File %s already exists\n", pathanme);
+    printf("File %s already exists\n", pathname);
   }else if(inumber == -2){
-    printf("Pathname %s is invalid\n", pathanme); 
+    printf("Pathname %s is invalid\n", pathname); 
   }else{
     int i;
+    int parentINumber;
     int blocknum = getNextEmptyBlk();
     inode[inumber][1] = type;
     inode[inumber][2] = 0;
@@ -408,12 +456,12 @@ int sfs_create(char *pathname, int type){
       if(directoryStructure[i][0]==NULL){
 	directoryStructure[i][0]=filename;
 	directoryStructure[i][1]=inumber;
-	if(directoryStructure[parentInumber][2]==NULL){
-	  directoryStructure[parentInumber][2]=i;		//sets the file to be associated with the parent if it is first child
+	if(directoryStructure[parentINumber][2]==NULL){
+	  directoryStructure[parentINumber][2]=i;		//sets the file to be associated with the parent if it is first child
 	}else{
-	  int tmp = directoryStructure[parentInumber][2];	//gets the current child directory of the parent directory
+	  int tmp = directoryStructure[parentINumber][2];	//gets the current child directory of the parent directory
 	  while(directoryStructure[tmp][3]!=NULL){
-	      temp = directoryStructure[tmp][2];      
+	      tmp = directoryStructure[tmp][2];      
 	  }
 	  directoryStructure[tmp][3]=i;			//assigns the current file as the next file in the list
 	}
@@ -462,6 +510,7 @@ int sfs_initialize(int erase){
     }
     inode_table[0][1] = 1;	//file type is folder
     inode_table[0][2] = 0;	//size of folder is zero - more if contains files
+    /*Might need changing*/
     inode_table[0][3] = 11;	//block number where file is located
   }
   get_block(0, io_buffer);
@@ -470,19 +519,19 @@ int sfs_initialize(int erase){
     for(j=1;j<5;j++){
       if(j%4 == 1){
 	if(io_buffer[i*4+j]==1)
-	  temp+=8;
+	  tmp+=8;
       }else if(j%4 == 2){
 	  if(io_buffer[i*4+j-1]==1)
-	  temp+=4;
+	  tmp+=4;
       }else if(j%4 == 3){
 	  if(io_buffer[i*4+j-1]==1)
-	  temp+=2;
+	  tmp+=2;
       }else if(j%4 == 0){
 	  if(io_buffer[i*4+j-1]==1)
-	  temp+=1;
+	  tmp+=1;
       }
     }
-      super_blk_buffer[i]=temp;
+      super_blk_buffer[i]=tmp;
     }
     get_block(1, io_buffer);
   for(i=0;i<64;i++){
@@ -490,24 +539,25 @@ int sfs_initialize(int erase){
     for(j=1;j<5;j++){
       if(j%4 == 1){
 	if(io_buffer[i*4+j]==1)
-	  temp+=8;
+	  tmp+=8;
       }else if(j%4 == 2){
 	  if(io_buffer[i*4+j-1]==1)
-	  temp+=4;
+	  tmp+=4;
       }else if(j%4 == 3){
 	  if(io_buffer[i*4+j-1]==1)
-	  temp+=2;
+	  tmp+=2;
       }else if(j%4 == 0){
 	  if(io_buffer[i*4+j-1]==1)
-	  temp+=1;
+	  tmp+=1;
       }
     }
-      super_blk_buffer[i*2]=temp;
+      super_blk_buffer[i*2]=tmp;
   }
   initializeDirectory();
   for(i=0;i<64; i++){
     OpenFileTable[i]=0;
   }
+  get_block(getNextEmptyBlk(), garbage);	//puts empty block in memory for deletion of files
 }
 
 void initializeDirectory(){
@@ -517,10 +567,10 @@ void initializeDirectory(){
 int getNextEmptyBlk(){
     int i = 11;
     int freeblknum;
-    while(superblockbuffer[i]==15){
+    while(super_blk_buffer[i]==15){
       i++;
     }
-    int freeblksum = spuer_blk_buffer[i];
+    int freeblksum = super_blk_buffer[i];
     if(freeblksum >= 8){
       if(freeblksum >= 12){
 	if(freeblksum >= 14){
