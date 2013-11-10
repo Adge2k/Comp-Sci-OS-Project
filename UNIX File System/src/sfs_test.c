@@ -20,6 +20,7 @@
 ******************************************************/
 #include <stdio.h>
 
+
 /*****************************************************
    templates for the sfs interface functions
 ******************************************************/
@@ -71,6 +72,8 @@ getNextEmptyBlk();
 int
 parsPathname(char* pathname, int parentINumber, int dNum);
 
+int
+parsePathnameAvail(char* pathname, char* filename, int parentINumber);
 
 
 /*****************************************************
@@ -92,6 +95,7 @@ parsPathname(char* pathname, int parentINumber, int dNum);
    do not take place within quoted strings */
 #define MAX_INPUT_LENGTH  512
 #define INPUT_BUF_FORMAT  "%1024s"
+#define SEPARATORS "/"
 
 /*****************************************************
    Global data structures
@@ -112,20 +116,18 @@ short int super_blk_buffer[128];
 
 char* directoryStructure[64][4];
 
-short int OpenFileTable[64];
+short int OpenFileTable[64][2];
 
 short int inode[64][4];
 
+char RAM[4][2*(MAX_IO_LENGTH+2)];	//4 files able to be open simultaneously.
+
 char* garbage;
 
-struct FileNamePair{
-  char* Filename;
-  int inumber;
-  struct FilenamePair* next;
-  struct FilenamePair* child;
-  
-};
-typedef struct FilenamePair dEntry;
+static int fileCount = 0;
+
+int freeRAM = 0;
+
 
 /*****************************************************
    main test routine
@@ -334,21 +336,36 @@ main()
       
 int sfs_open(char *pathname){
   int inumber = parsePathname(pathname);
+  char* tmp_buffer[MAX_IO_LENGTH+1];
   if (inumber<0){
     return -1;
   }
-  OpenFileTable[inumber]+=1;
-  get_block(inode[0][3], io_buffer);
+  OpenFileTable[inumber][0]+=1;
+  if(fileCount<4){
+    if(OpenFileTable[inumber][1]==NULL){
+      OpenFileTable[inumber][1]=fileCount;
+      get_block(inode[0][3],RAM[OpenFileTable[inumber][1]]);
+      //edit for file size of 512 here
+      fileCount++;
+    }else{
+      OpenFileTable[inumber][0]++;
+    }
+  }else if(OpenFileTable[inumber][1]!=NULL){
+     OpenFileTable[inumber][0]++;
+  }else{
+     return -1;
+  }
   return 1;
 }
 
 int sfs_read(int fd, int start, int length, char *mem_pointer){
   int i;
   int tmp=start;
-  char tmp_buffer[MAX_IO_LENGTH+1];
+  char tmp_buffer[2*(MAX_IO_LENGTH+1)];
   char tmp_buffer2[length+1];
-  if(inode[fd][3]!=NULL){
-    get_block(inode[fd][3], tmp_buffer);
+  if(OpenFileTable[fd][0]!=0){
+    *tmp_buffer = RAM[OpenFileTable[fd][1]];
+    //get_block(inode[fd][3], tmp_buffer);
     for(i=0; i<length; i++){
       tmp_buffer2[i] = tmp_buffer[tmp];
       tmp++;
@@ -360,7 +377,21 @@ int sfs_read(int fd, int start, int length, char *mem_pointer){
 }
 
 int sfs_write(int fd, int start, int length, char *mem_pointer){
+  int size;
+  char tmp_buffer[MAX_IO_LENGTH+1];
   
+  if(inode[fd][3]!=NULL){
+    size=inode[fd][2];
+    if(start==-1){
+      char tmp_buffer2[size + length+1];
+      //get_block(inode[fd][3], tmp_buffer);
+    }
+    if((start + length)> size){
+      return -1;
+    }
+    
+  }
+  return -1;
 }
 
 int sfs_readdir(int fd, char *mem_pointer){
@@ -401,9 +432,19 @@ int sfs_readdir(int fd, char *mem_pointer){
 }
 
 int sfs_close(int fd){
-  if(OpenFileTable[fd]>0){
-    OpenFileTable[fd]-=1;
+  int i;
+  if(OpenFileTable[fd][0]>0){
+    OpenFileTable[fd][0]-=1;
+    if(OpenFileTable[fd][0]==0){
+      for(i=0;i<(2*(MAX_IO_LENGTH+1));i++){
+	RAM[OpenFileTable[fd][1]][i]=NULL;
+      }
+      freeRAM=OpenFileTable[fd][1];
+      OpenFileTable[fd][1]=NULL;
+    }
+    return 1;
   }
+  return -1;
 }
 
 int sfs_delete(char *pathname){
@@ -415,7 +456,7 @@ int sfs_delete(char *pathname){
     return -1;
     //printf("File %s does not exist", pathanme);
   }else{
-    if(OpenFileTable[inumber]!=0)
+    if(OpenFileTable[inumber][0]!=0)
       return -1;
     directoryStructure[dNum][0]=NULL;
     directoryStructure[dNum][1]=NULL;
@@ -555,7 +596,7 @@ int sfs_initialize(int erase){
   }
   initializeDirectory();
   for(i=0;i<64; i++){
-    OpenFileTable[i]=0;
+    OpenFileTable[i][0]=0;
   }
   get_block(getNextEmptyBlk(), garbage);	//puts empty block in memory for deletion of files
 }
@@ -586,4 +627,46 @@ int getNextEmptyBlk(){
     }
     return(i*4+freeblknum);
 	  
+}
+
+int parsePathname(char* pathname, int parentINumber, int dNum){
+  int i=0;
+  int inumber;
+  dNum =0;
+  char* path = malloc((6*sizeof(char)));
+  char* parent = malloc((6*sizeof(char)));
+  int count = 0;
+  int slash =0;
+  for(i=0; i < strlen(pathname);i++){
+    if(pathname[i]=='/'){
+	slash = 1;
+      }else{
+	slash = 0;
+	count++;
+      }
+      if((slash == 1 && count>0)){
+	memcpy(path, pathname + (i-count), count);
+	count = 0;
+	printf("%s\n",path);
+	memcpy(parent, path, count);
+	if(!strcmp(parent,directoryStructure[directoryStructure[dNum][2]][0]){
+	  dNum=directoryStructure[dNum][2];
+	}else{
+	  
+	}
+      }else if(i==strlen(pathname)-1){
+	memcpy(path, pathname + (i-(count-1)), count+1);
+	printf("%s\n",path);
+      }
+  }
+  
+  
+  
+  return inumber;
+  
+}
+
+int parsePathnameAvail(char* pathname, char* filename, int parentINumber){
+  
+  
 }
