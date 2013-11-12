@@ -120,13 +120,14 @@ short int OpenFileTable[64][2];
 
 short int inode[64][4];
 
-char RAM[4][2*(MAX_IO_LENGTH+2)];	//4 files able to be open simultaneously.
+char RAM[4][/*2*/(MAX_IO_LENGTH+1)];	//4 files able to be open simultaneously.
 
-char* garbage;
+char garbage[MAX_IO_LENGTH+1];
 
 static int fileCount = 0;
 
 int freeRAM = 0;
+
 
 
 /*****************************************************
@@ -222,8 +223,8 @@ main()
       /* Read from a directory */
       printf("Enter file descriptor number: ");
       scanf("%d",&p1);
-      while(retval>0|retval==NULL){	//added for loop
-	retval = sfs_readdir(p1,io_buffer);
+      //while(retval>0|retval==NULL){	//added for loop
+	retval = sfs_readdir(p1, io_buffer);
 	if (retval > 0) {
 	  printf("sfs_readdir succeeded.\n");
 	  printf("Directory entry is: %s\n",io_buffer);
@@ -235,7 +236,7 @@ main()
 	else {
 	  printf("Error.  Return value was %d\n",retval);
 	}
-      }
+      //}
       break;
     case 'c':
       /* Close a file */
@@ -335,7 +336,9 @@ main()
 }
       
 int sfs_open(char *pathname){
-  int inumber = parsePathname(pathname);
+  int dNum;
+  int parentINumber;
+  int inumber = parsePathname(pathname, &parentINumber, dNum);
   char* tmp_buffer[MAX_IO_LENGTH+1];
   if (inumber<0){
     return -1;
@@ -361,16 +364,19 @@ int sfs_open(char *pathname){
 int sfs_read(int fd, int start, int length, char *mem_pointer){
   int i;
   int tmp=start;
-  char tmp_buffer[2*(MAX_IO_LENGTH+1)];
+  char tmp_buffer[(MAX_IO_LENGTH+1)];
   char tmp_buffer2[length+1];
   if(OpenFileTable[fd][0]!=0){
-    *tmp_buffer = RAM[OpenFileTable[fd][1]];
+    memcpy(tmp_buffer, RAM[OpenFileTable[fd][1]], sizeof(RAM[OpenFileTable[fd][1]]));
     //get_block(inode[fd][3], tmp_buffer);
     for(i=0; i<length; i++){
       tmp_buffer2[i] = tmp_buffer[tmp];
       tmp++;
     }
-    mem_pointer = tmp_buffer2;
+    printf("%s\n", RAM[OpenFileTable[fd][1]]);
+    memcpy(mem_pointer, tmp_buffer, sizeof(tmp_buffer));
+    printf("%s\n", mem_pointer);
+    //mem_pointer = tmp_buffer2;
     return 1;
   }
   return -1;
@@ -378,16 +384,40 @@ int sfs_read(int fd, int start, int length, char *mem_pointer){
 
 int sfs_write(int fd, int start, int length, char *mem_pointer){
   int size;
+  int i;
+  if(strlen(mem_pointer)!=length){
+    //return -1;
+  }
+  if(inode[fd][1]==1)
+    return -1;
+  if(OpenFileTable[fd][0]==0)
+    return -1;
+  printf("%d", strlen(mem_pointer));
   char tmp_buffer[MAX_IO_LENGTH+1];
   
-  if(inode[fd][3]!=NULL){
+  memcpy(tmp_buffer, RAM[OpenFileTable[fd][1]], sizeof(RAM[OpenFileTable[fd][1]]));
+  if(!(inode[fd][3]==NULL)){
     size=inode[fd][2];
     if(start==-1){
-      char tmp_buffer2[size + length+1];
+      strcat(tmp_buffer, mem_pointer);
+      memcpy(mem_pointer, tmp_buffer, sizeof(tmp_buffer));
+      inode[fd][2]=size+length;
+      memcpy(RAM[OpenFileTable[fd][1]], tmp_buffer, sizeof(tmp_buffer));
+      return 1;
+      //char tmp_buffer2[size + length+1];
       //get_block(inode[fd][3], tmp_buffer);
-    }
-    if((start + length)> size){
+    }else if((start + length)> size){
+      printf("size issue");
       return -1;
+    }else{
+      memcpy(tmp_buffer, RAM[OpenFileTable[fd][1]], sizeof(RAM[OpenFileTable[fd][1]]));
+
+      for(i=start;i<start+length;i++){
+	tmp_buffer[i]=mem_pointer[i-start];
+      }
+      //memcpy(tmp_buffer+start, mem_pointer, sizeof(mem_pointer));
+      memcpy(RAM[OpenFileTable[fd][1]], tmp_buffer, sizeof(tmp_buffer));
+      return 1;
     }
     
   }
@@ -397,37 +427,60 @@ int sfs_write(int fd, int start, int length, char *mem_pointer){
 int sfs_readdir(int fd, char *mem_pointer){
   int i=0;
   int j;
+  int k = 0;
   int tmp;
+  int tmp2;
   static int t=1;
   static int flag = 0;
-  if(inode[fd][1]!=NULL){
-    while(directoryStructure[i][1]!=fd){
-      i++;
+  if(!(inode[fd][1]==NULL)){
+    while(directoryStructure[k][1]!=fd){	//cycle through the directory until folder is found
+      printf("%d", i);
+      k++; 
     }
-    if(directoryStructure[i][2]!=NULL){
+    if(!(directoryStructure[i][2]==NULL)){		//if the child of directort exists
+      printf("%s", directoryStructure[i][0]);
       if(flag==0){
-	mem_pointer = directoryStructure[i][0];
+	tmp = (int)directoryStructure[i][2];		//set tmp equal to dNum of first child
+	memcpy(mem_pointer, directoryStructure[tmp][0], 6);		//copy first child name to pointer
+	//io_buffer = directoryStructure[i][0];
+	//printf("%d", directoryStructure[0][2]);
+	//printf("%s", mem_pointer);
 	flag =1;
+	printf("%d", i);
+	t++;
 	return 1;
       }else if(flag==1){
-	
-	if(directoryStructure[i][3]!=NULL){
-	  tmp=directoryStructure[i][3];
+	//i++;
+	printf("%d", i);
+	printf("what goin on");
+	tmp2 = (int)directoryStructure[i][2];
+	for(i=0;i<t;i++){
+	  //if(!(directoryStructure[i][3]==NULL))
+	    tmp2=(int)directoryStructure[tmp2][3];
+	    printf("%d", tmp2);
+	}
+	if(!(directoryStructure[tmp2][3]==NULL)){		//if child has sibling
+	  printf("gets here");
+	  tmp=(int)directoryStructure[i][3];		//set tmp equal to childs sibling dNum
 	  for(j=0;j<t;j++){
-	    tmp=directoryStructure[tmp][3];
+	    tmp=(int)directoryStructure[tmp][3];	//set tmp equal to next sibling
 	  }
-	  mem_pointer = directoryStructure[tmp][0];
+	  memcpy(mem_pointer, directoryStructure[tmp][0], 6);		//copy sibling name to pointer
+	  //mem_pointer = directoryStructure[tmp][0];
 	  t++;
 	  return 1;
 	}else{
 	  t=1;
+	  i =0;
 	  flag = 0;
 	  return 0;
 	}
 	  
       }
-    }
-  }
+    }else{
+     return 0; 
+    }printf("test");
+  }printf("test2");
   return -1;
 }
 
@@ -472,7 +525,7 @@ int sfs_delete(char *pathname){
     for(i=0;i<3; i++){
       inode[inumber][i]=NULL;
     }
-    put_block(inode[inumber][3], garbage);	//emptys the block
+    //put_block(inode[inumber][3], garbage);	//emptys the block
      
     inode[inumber][3]=NULL;
   }
@@ -480,45 +533,56 @@ int sfs_delete(char *pathname){
 
 int sfs_create(char *pathname, int type){
   char* filename;
-  int parentINumber;
-  int inumber = parsePathnameAvail(pathname, &filename, &parentINumber);
+  int parentINumber = 1;
+  int inumber = parsePathnameAvail(pathname, filename, &parentINumber);
   if(inumber==-1){
     printf("File %s already exists\n", pathname);
+    return -1;
   }else if(inumber == -2){
     printf("Pathname %s is invalid\n", pathname); 
+    return -1;
   }else{
     int i;
-    int parentINumber;
+    //int parentINumber;
     int blocknum = getNextEmptyBlk();
     inode[inumber][1] = type;
+    printf("\n%d\n", inode[inumber][1]);
     inode[inumber][2] = 0;
     inode[inumber][3] = blocknum;
     for(i=1; i<64; i++){
       if(directoryStructure[i][0]==NULL){
 	directoryStructure[i][0]=filename;
 	directoryStructure[i][1]=inumber;
+	printf("ParentInumber is %d %s\n", parentINumber, directoryStructure[parentINumber][0]);
 	if(directoryStructure[parentINumber][2]==NULL){
 	  directoryStructure[parentINumber][2]=i;		//sets the file to be associated with the parent if it is first child
 	}else{
 	  int tmp = directoryStructure[parentINumber][2];	//gets the current child directory of the parent directory
-	  while(directoryStructure[tmp][3]!=NULL){
-	      tmp = directoryStructure[tmp][2];      
+	  while(!(directoryStructure[tmp][3]==NULL)){
+	      tmp = directoryStructure[tmp][3];      
 	  }
 	  directoryStructure[tmp][3]=i;			//assigns the current file as the next file in the list
 	}
-      }
+      }break;
     }
-  }
+  }printf("%d", (int)sizeof(directoryStructure));
+  memcpy(io_buffer, directoryStructure, sizeof(directoryStructure));
+  
+  put_block(10, io_buffer);
+  return 1;
 }
 
 int sfs_getsize(char *pathname){
   int inumber = parsePathname(pathname);
-  //printf("File Size of %s id %d\n", pathname, inode[inumber][2]);
+  printf("File Size of %s id %d\n", pathname, inode[inumber][2]);
   return inode[inumber][2];
-}
+ }
 
 int sfs_gettype(char *pathname){
-  int inumber = parsePathname(pathname);
+  int dNum;
+  int parentINumber;
+  int inumber = parsePathname(pathname, parentINumber, dNum);
+  printf("%d", inode[inumber][1]);
   return inode[inumber][1];
   
 }
@@ -532,16 +596,20 @@ int sfs_initialize(int erase){
     
   }else{
     short int disk_bitmap[512];
-    for(i=0; i<8; i++){		//sets the first 2 blocks as full for storing the bitmap
-      disk_bitmap[0]=1;
+    for(i=0; i<11; i++){		//sets the first 2 blocks as full for storing the bitmap
+      disk_bitmap[i]=1;
+      
     }
-    for(i = 8; i<512; i++){
+    for(i = 11; i<512; i++){
       disk_bitmap[i]=0;
     }
     for(i=0;i<256;i++){
       buff[i] = disk_bitmap[i];
     }
     put_block(0, buff);
+    //printf("%d", disk_bitmap[1]);
+    //get_block(0, io_buffer);
+    //printf("%d", io_buffer[0]);
     for(i=256;i<512;i++){
       buff[i-256] = disk_bitmap[i];
     }
@@ -554,26 +622,45 @@ int sfs_initialize(int erase){
     /*Might need changing*/
     inode_table[0][3] = 11;	//block number where file is located
   }
+  inode_table[0][3]=NULL;
+  inode_table[0][2]=NULL;
+  for(i = 1; i<64; i++){
+    inode_table[i][1] = NULL;	//file type is folder
+    inode_table[i][2] = NULL;	//size of folder is zero - more if contains files
+    /*Might need changing*/
+    inode_table[i][3] = NULL;
+    
+  }
+  for(i=0; i<64; i++){
+    inode[i][0] = inode_table[i][0];
+    inode[i][1] = inode_table[i][1];
+    inode[i][2] = inode_table[i][2];
+    inode[i][3] = inode_table[i][3];
+  }
   get_block(0, io_buffer);
+  //printf("%d", (int)io_buffer[2]);
   for(i=0;i<64;i++){
     int tmp=0;
     for(j=1;j<5;j++){
       if(j%4 == 1){
-	if(io_buffer[i*4+j]==1)
+	if((int)io_buffer[i*4+j]==1)
 	  tmp+=8;
       }else if(j%4 == 2){
-	  if(io_buffer[i*4+j-1]==1)
+	  if((int)io_buffer[i*4+j-1]==1)
 	  tmp+=4;
       }else if(j%4 == 3){
-	  if(io_buffer[i*4+j-1]==1)
+	  if((int)io_buffer[i*4+j-1]==1)
 	  tmp+=2;
       }else if(j%4 == 0){
-	  if(io_buffer[i*4+j-1]==1)
+	  if((int)io_buffer[i*4+j-1]==1)
 	  tmp+=1;
       }
     }
       super_blk_buffer[i]=tmp;
     }
+    //*io_buffer = super_blk_buffer;
+    int blknum = 0;
+    //put_block(blknum, &io_buffer);
     get_block(1, io_buffer);
   for(i=0;i<64;i++){
     int tmp=0;
@@ -592,40 +679,65 @@ int sfs_initialize(int erase){
 	  tmp+=1;
       }
     }
-      super_blk_buffer[i*2]=tmp;
+      super_blk_buffer[i+64]=tmp;
   }
   initializeDirectory();
   for(i=0;i<64; i++){
     OpenFileTable[i][0]=0;
-  }
-  get_block(getNextEmptyBlk(), garbage);	//puts empty block in memory for deletion of files
+  }int l;
+  io_buffer[1]=20;
 }
 
 void initializeDirectory(){
+    char* buffer = malloc(sizeof(directoryStructure));
     directoryStructure[0][0]="root";
     directoryStructure[0][1]= 0;
+    directoryStructure[0][2]=1;
+    directoryStructure[1][0] = "myfile";
+    directoryStructure[1][1] = 1;
+    directoryStructure[1][3]=2;
+    directoryStructure[2][1] = 2;
+    directoryStructure[2][0] = "myfile2";
+    //directoryStructure[1][3]= NULL;
+    inode[2][1]=0;
+    
+    inode[1][1] = 0;
+    inode[1][2] = 0;
+    inode[1][3] = 215;
+    buffer = directoryStructure;
+    put_block(9, buffer);
 }
-int getNextEmptyBlk(){
-    int i = 11;
+
+int getNextEmptyBlk(){				//Returns an invalid integer value
+    int i = 0;
     int freeblknum;
-    while(super_blk_buffer[i]==15){
+    printf("%d", i);
+  printf(" Super Block %d\n", (int)super_blk_buffer[i]);
+    while((int)super_blk_buffer[i]==15){
       i++;
+      printf("%d", i);
     }
-    int freeblksum = super_blk_buffer[i];
-    if(freeblksum >= 8){
-      if(freeblksum >= 12){
-	if(freeblksum >= 14){
+    printf("free block sum %d and number %d\n", super_blk_buffer[i], i);
+    int freeblksum = (int)super_blk_buffer[i];
+     printf("free block sum %d\n", freeblksum);
+    if(freeblksum >= 8){	//1000 1001 1011 1100 1101 1110 
+      if(freeblksum >= 12){	//1100 1101 
+	if(freeblksum == 14){	//1110
 	  freeblknum = 4;
+	  printf("free block 4");
 	}else{
 	  freeblknum = 3;
+	  printf("free block 3");
 	}
-      }else{
+      }else{			//1001 1011
 	freeblknum = 2;
+	printf("free block 2");
       }
-    }else{
+    }else{			//0001 0010 0011 0100 0101 0111
       freeblknum = 1;
-    }
-    return(i*4+freeblknum);
+      printf("free block 1");
+    }printf(" returned %d , %d", (int)((i*4)+freeblknum), (int)freeblknum);
+    return((int)((i*4)+freeblknum));
 	  
 }
 
@@ -637,10 +749,14 @@ int parsePathname(char* pathname, int parentINumber, int dNum){
   char* parent = malloc((6*sizeof(char)));
   int count = 0;
   int slash =0;
+  int start = 0;
+  int check = 0;
   for(i=0; i < strlen(pathname);i++){
     if(pathname[i]=='/'){
 	slash = 1;
+	start = 1;
       }else{
+	start = 1;
 	slash = 0;
 	count++;
       }
@@ -649,24 +765,83 @@ int parsePathname(char* pathname, int parentINumber, int dNum){
 	count = 0;
 	printf("%s\n",path);
 	memcpy(parent, path, count);
-	if(!strcmp(parent,directoryStructure[directoryStructure[dNum][2]][0]){
-	  dNum=directoryStructure[dNum][2];
-	}else{
-	  
+	if(!strcmp(parent,directoryStructure[(int)directoryStructure[dNum][2]][0])){	//if directory not equal to child of parent
+	  dNum=(int)directoryStructure[dNum][2];
+	  printf("%d H\n",dNum); 
+	}else if(!strcmp(parent,directoryStructure[dNum][0])){		//if directory equal to current dNum
+	  dNum=(int)directoryStructure[dNum][2];
+	  printf("%d H2\n",dNum);
+	}else{									//if directory entry not equal
+	  dNum=(int)directoryStructure[dNum][2];
+	  printf("%d H3\n %d nn \n",dNum, directoryStructure[dNum][3]);
+	  if(!(directoryStructure[dNum][3]==NULL)){				//if sibling not equal NULL
+	    dNum = (int)directoryStructure[dNum][3];
+	  printf("%d H4\n",dNum);
+	  }
+	  while(!(directoryStructure[dNum][3]==NULL)){				//while next sibling exists
+	    if(!strcmp(parent,directoryStructure[dNum][0])){			//if directory entry being searched for found
+	      check = 1;
+	      //dNum = directoryStructure[dNum][1];
+	      printf("%dnew", dNum);
+	    }else{
+	      dNum = directoryStructure[dNum][3];
+	      printf("%d", dNum);
+	    }
+	
+	  }
 	}
       }else if(i==strlen(pathname)-1){
-	memcpy(path, pathname + (i-(count-1)), count+1);
+	slash = 1;
+	memcpy(path, pathname + ((i+1)-(count+1)), count+2);
+	printf("%s\n",path);
+	if((slash == 1 && count>0)){
+	memcpy(path, pathname + (i-count), count);
+	//count = 0;
+	printf("%s\n",path);
+	//memcpy(parent, path, count);
+	printf("%dnn", dNum);
+	if(!strcmp(path,directoryStructure[(int)directoryStructure[dNum][2]][0])){	//if directory not equal to child of parent
+	  dNum=(int)directoryStructure[dNum][2];
+	  printf("%d H\n",dNum); 
+	}else if(!strcmp(path,directoryStructure[dNum][0])){		//if directory equal to current dNum
+	  dNum=(int)directoryStructure[dNum][2];
+	  printf("%d H22\n",dNum);
+	}else{									//if directory entry not equal
+	  if((path, directoryStructure[dNum][0])&& !(dNum>1))
+	    dNum=(int)directoryStructure[dNum][2];
+	  printf("%d H33\n",dNum);
+	  if(!(directoryStructure[dNum][3]==NULL) && !strcmp(path, directoryStructure[dNum][0])){				//if sibling not equal NULL
+	    dNum = (int)directoryStructure[dNum][3];
+	    printf("fhksfhf\n");
+	  }
+	  printf("%d H44\n",dNum);
+	  //if(
+	  while(!(directoryStructure[dNum][3]==NULL)&& !strcmp(path, directoryStructure[dNum][0])){				//while next sibling exists
+	    if(!strcmp(path,directoryStructure[dNum][0])){			//if directory entry being searched for found
+	      check = 1;
+	      //dNum = directoryStructure[dNum][1];
+	    }else{
+	      dNum = directoryStructure[dNum][3];
+	      printf("%d", dNum);
+	    }
+	  }
+	  }
+	}memcpy(path, pathname + (i-(count-1)-1), count+1);
 	printf("%s\n",path);
       }
   }
-  
-  
+  printf("%d\n\n", dNum);
+  inumber = directoryStructure[dNum][1];
+  printf("%d", inumber);
   
   return inumber;
   
 }
 
 int parsePathnameAvail(char* pathname, char* filename, int parentINumber){
-  
+  //PathAvail = a;
+  //a.parentINumber = 2;
+  parentINumber = 1;
+  return 3;
   
 }
