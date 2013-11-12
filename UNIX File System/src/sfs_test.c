@@ -347,7 +347,7 @@ int sfs_open(char *pathname){
   if(fileCount<4){
     if(OpenFileTable[inumber][1]==NULL){
       OpenFileTable[inumber][1]=fileCount;
-      get_block(inode[0][3],RAM[OpenFileTable[inumber][1]]);
+      get_block(inode[inumber][3],RAM[OpenFileTable[inumber][1]]);
       //edit for file size of 512 here
       fileCount++;
     }else{
@@ -369,12 +369,13 @@ int sfs_read(int fd, int start, int length, char *mem_pointer){
   if(OpenFileTable[fd][0]!=0){
     memcpy(tmp_buffer, RAM[OpenFileTable[fd][1]], sizeof(RAM[OpenFileTable[fd][1]]));
     //get_block(inode[fd][3], tmp_buffer);
-    for(i=0; i<length; i++){
+    for(i=0; tmp<start+length; i++){
       tmp_buffer2[i] = tmp_buffer[tmp];
+      printf("%d", tmp);
       tmp++;
     }
     printf("%s\n", RAM[OpenFileTable[fd][1]]);
-    memcpy(mem_pointer, tmp_buffer, sizeof(tmp_buffer));
+    memcpy(mem_pointer, tmp_buffer2, sizeof(tmp_buffer2));
     printf("%s\n", mem_pointer);
     //mem_pointer = tmp_buffer2;
     return 1;
@@ -385,24 +386,39 @@ int sfs_read(int fd, int start, int length, char *mem_pointer){
 int sfs_write(int fd, int start, int length, char *mem_pointer){
   int size;
   int i;
+ /* if(sscanf(fd, "%i",  &intvar)!=1)
+    return -1;
+  if(sscanf(start, "%i" , &intvar)!=1)
+    return -1;
+  if(sscanf(length, "%i",  &intvar)!=1)
+    return -1;
+  */
   if(strlen(mem_pointer)!=length){
-    //return -1;
+    printf("too many characters entered!");
+    return -1;
   }
   if(inode[fd][1]==1)
     return -1;
   if(OpenFileTable[fd][0]==0)
     return -1;
+  if(OpenFileTable[fd][0]>1)
+    return -1;
   printf("%d", strlen(mem_pointer));
   char tmp_buffer[MAX_IO_LENGTH+1];
+  printf("%d", inode[fd][2]);
+  size=inode[fd][2];
   
   memcpy(tmp_buffer, RAM[OpenFileTable[fd][1]], sizeof(RAM[OpenFileTable[fd][1]]));
   if(!(inode[fd][3]==NULL)){
-    size=inode[fd][2];
+    
     if(start==-1){
+      if(size!=0){
       strcat(tmp_buffer, mem_pointer);
-      memcpy(mem_pointer, tmp_buffer, sizeof(tmp_buffer));
+      //memcpy(mem_pointer, tmp_buffer, sizeof(tmp_buffer));
+      }
       inode[fd][2]=size+length;
       memcpy(RAM[OpenFileTable[fd][1]], tmp_buffer, sizeof(tmp_buffer));
+      put_block(inode[fd][3],mem_pointer);
       return 1;
       //char tmp_buffer2[size + length+1];
       //get_block(inode[fd][3], tmp_buffer);
@@ -417,6 +433,7 @@ int sfs_write(int fd, int start, int length, char *mem_pointer){
       }
       //memcpy(tmp_buffer+start, mem_pointer, sizeof(mem_pointer));
       memcpy(RAM[OpenFileTable[fd][1]], tmp_buffer, sizeof(tmp_buffer));
+      put_block(inode[fd][3],mem_pointer);
       return 1;
     }
     
